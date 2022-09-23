@@ -16,9 +16,15 @@ class GamelogData:
     """
     Manage gamelogs data from NBA API.
     """
-    def __init__(self, content, data_type, season_yr, season_type, set_name=None):
+    def __init__(self, content, season_yr, season_type, set_name=None):
+        """
+        :param content: JSON payload
+        :param season_yr: e.g. "2021-22"
+        :param season_type: 'Regular season' or 'Playoffs'
+        :param set_name: e.g. 'ATL' or 'NBA'
+        """
         self.result_sets = content["resultSets"]
-        self.data_type = data_type
+        self.data_type = content['resource']
         self.season_yr = season_yr
         self.season_type = season_type
         self.set_name = set_name  # 'NBA', 'BOS', etc.
@@ -52,7 +58,7 @@ class GamelogData:
         return f'{self.data_type} data for {self.set_name} in {self.season_suffix} season'
 
 
-def get_team_gamelogs(team_abv=None, season_yr=None, season_type=None):
+def fetch_team_gamelogs(team_abv=None, season_yr=None, season_type=None):
     """
     Downloads game logs for a team for a given season
     :param team_abv: Team Abbreviation
@@ -73,13 +79,15 @@ def get_team_gamelogs(team_abv=None, season_yr=None, season_type=None):
         team_id_nullable=str(team_id), season_nullable=season_suffix, season_type_nullable=season_type,
     )
     content = json.loads(response.get_json())
-    team_gamelogs = GamelogData(content, 'team_gamelogs', season_yr, season_type, set_name=team_abv)
+    team_gamelogs = GamelogData(content, season_yr, season_type, set_name=team_abv)
+    team_gamelogs.to_csv()
     return team_gamelogs
 
 
-def get_season_gamelogs(season_yr=None, season_type=None):
+def fetch_season_gamelogs(season_yr=None, season_type=None):
     """
     Downloads & save team game logs for a given season
+    This will always overwrite data.  # TODO - only overwrite data for the current and the immediately prev. season;
     :param season_yr: Starting year of the season to get (e.g. 2022 for '22-'23)
     :param season_type: Season type (^(Regular Season)|(Pre Season)|(Playoffs)|(All-Star)|(All Star)$)
     :return:
@@ -91,10 +99,9 @@ def get_season_gamelogs(season_yr=None, season_type=None):
     team_gamelogs_list = list()
     for i, row in team_list.iterrows():
         team_abv = row["TEAM_ABBREVIATION"]
-        team_gamelogs = get_team_gamelogs(team_abv=team_abv, season_yr=season_yr, season_type=season_type)
+        team_gamelogs = fetch_team_gamelogs(team_abv=team_abv, season_yr=season_yr, season_type=season_type)
         if len(team_gamelogs.result_sets[0]['rowSet']) > 0:
             logger.info(f"Fetched {season_type} data for {team_abv} in {season_yr}.")
-            team_gamelogs.to_csv()
             team_gamelogs_list.append(team_gamelogs)
         else:
             logger.warning(f"Warning: no {season_type} data found for {team_abv} in {season_yr}.")
@@ -103,9 +110,9 @@ def get_season_gamelogs(season_yr=None, season_type=None):
     return team_gamelogs_list
 
 
-def load_team_gamelogs(team_abv=None, season_yr=None, season_type=None):
+def load_team_gamelogs(team_abv=None, season_yr=None, season_type='Regular Season'):
     """
-    Load game log (box score) data for a team
+    Load locally saved game log (box score) data for a team
     :param team_abv: Team abbreviation
     :param season_yr: Year to load data in (e.g. 2020 for 2020-21 season)
     :param season_type: Season types (see def_season_types)
@@ -119,10 +126,92 @@ def load_team_gamelogs(team_abv=None, season_yr=None, season_type=None):
 
     gl_df_list = list()
     for team_abv in team_abv_list:
-        fname = utils.get_fname('team_gamelogs', season_suffix, season_type, set_name=team_abv)
+        fname = utils.get_fname('gamelogs', season_suffix, season_type, set_name=team_abv)
         fpath = dl_dir/fname
         tm_gl_df = pd.read_csv(fpath)
         gl_df_list.append(tm_gl_df)
     gl_df = pd.concat(gl_df_list)
 
     return gl_df
+
+
+def get_gamedata_path(gm_id, datatype, gamedata_dir=None):
+    """
+    Convert NBA's game ID to file path
+    :param gm_id: NBA-specified game id
+    :param gamedata_dir: Directory of file location (should be a pathlib.Path obj)
+    :return:
+    """
+    if gamedata_dir is None:
+        gamedata_dir = utils.rawdata_dir
+
+    if str(gm_id)[:2] != '00':
+        gm_id = '00' + str(gm_id)  # This accounts for inconsistencies in NBA's game ID naming system.
+    gamedata_fname = f'{gm_id}_{datatype}.json'
+    return gamedata_dir/gamedata_fname
+
+
+def fetch_gamedata(gm_id, datatype="pbp", gamedata_dir=None):
+    """
+    Download a datafile based on gameID as downloaded from NBA API & saves to file
+    :param gm_id: NBA game ID
+    :param datatype: What data types to download - determines endpoint to use
+    :param gamedata_dir: Directory of file location (should be a pathlib.Path obj)
+    :return:
+    """
+    from nba_api.stats.endpoints import boxscoreadvancedv2
+    from nba_api.live.nba.endpoints import playbyplay
+
+    if datatype not in ['boxscore', 'pbp']:
+        logger.warning(f'Supplied datatype ({datatype}) not recognised; defaulting to box score.')
+        datatype = 'boxscore'
+
+    gamedata_path = get_gamedata_path(gm_id, datatype, gamedata_dir)
+
+    if gamedata_path.exists():
+        logger.info(f"JSON found for game {gm_id}, loading file download.")
+        with open(gamedata_path, 'r') as f:
+            content = json.load(f)
+    else:
+        try:
+            logger.info(f"Downloading {datatype} data for game {gm_id}")
+            if datatype == "boxscore":
+                response = boxscoreadvancedv2.BoxScoreAdvancedV2(game_id=gm_id)
+            else:
+                response = playbyplay.PlayByPlay(gm_id)
+
+            content = json.loads(response.get_json())
+            with open(gamedata_path, 'w') as f:
+                json.dump(content, f)
+            logger.info(f"Got {datatype} data for game {gm_id}")
+        except:
+            logger.exception(f"Error getting {datatype} data for game {gm_id}")
+            return False
+
+    return content
+
+
+def pbp_content_to_df(content):
+    pbp_df = pd.DataFrame(content['game']['actions'])
+    pbp_df["GAME_ID"] = content["game"]['gameId']
+    pbp_df = pbp_df.assign(realtime_dt=pd.to_datetime(pbp_df["timeActual"]))
+    return pbp_df
+
+
+def load_pbp_data(gm_id_list, gamedata_dir=None):
+    """
+    Load game data based on gameID as downloaded from NBA API & saves to file
+    :param gm_id_list: NBA game IDs
+    :param datatype: What data types to download - determines endpoint to use
+    :param gamedata_dir: Directory of file location (should be a pathlib.Path obj)
+    :return:
+    """
+
+    pbp_df_list = list()
+    for gm_id in gm_id_list:
+        content = fetch_gamedata(gm_id, datatype='pbp', gamedata_dir=gamedata_dir)
+        gm_pbp_df = pbp_content_to_df(content)
+        pbp_df_list.append(gm_pbp_df)
+    pbp_df = pd.concat(pbp_df_list)
+
+    return pbp_df

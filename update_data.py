@@ -21,12 +21,12 @@ pd.set_option('display.max_columns', 20)
 pd.set_option('display.width', desired_width)
 
 dl_dir = utils.dl_dir
-json_dir = dl_dir/'json'
+rawdata_dir = utils.rawdata_dir
 
 def main():
     dl_dir.mkdir(exist_ok=True, parents=True)
-    json_dir.mkdir(exist_ok=True, parents=True)
-    data.get_season_gamelogs(season_yr=2021, season_type='Regular Season')
+    rawdata_dir.mkdir(exist_ok=True, parents=True)
+    data.fetch_season_gamelogs(season_yr=2020, season_type='Regular Season')
     return True
 
 

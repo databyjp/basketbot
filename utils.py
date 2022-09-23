@@ -7,10 +7,12 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # Parameters
-file_prefixes = {"pl_list": "common_all_players", "pl_gamelogs": "pl_gamelogs", "team_gamelogs": "team_gamelogs",
+file_prefixes = {"pl_list": "common_all_players", "gamelogs": "gamelogs",
                  "proc_pbp": "proc_pbp", "shots_pbp": "shots_pbp"}
 dl_dirpath = "dl_data"
 dl_dir = Path(dl_dirpath)
+rawdata_dir = dl_dir/'raw_gamedata'
+
 def_start_year = 2015  # Default start year for multi-year based functions
 
 
