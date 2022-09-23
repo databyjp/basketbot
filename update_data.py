@@ -26,8 +26,7 @@ json_dir = dl_dir/'json'
 def main():
     dl_dir.mkdir(exist_ok=True, parents=True)
     json_dir.mkdir(exist_ok=True, parents=True)
-    # get_season_gamelogs(season_yr=2019, season_type='Regular Season')
-    data.update_gamedata(json_dir, 'pbp', st_year=2020, end_year=2020)
+    data.get_season_gamelogs(season_yr=2021, season_type='Regular Season')
     return True
 
 

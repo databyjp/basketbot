@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 dl_dir = utils.dl_dir
 
 
-class NBAData:
+class GamelogData:
     """
-    Generic class to represent returned payload from NBA API, with methods defined to make them easier to handle.
+    Manage gamelogs data from NBA API.
     """
     def __init__(self, content, data_type, season_yr, season_type, set_name=None):
         self.result_sets = content["resultSets"]
@@ -62,9 +62,8 @@ def get_team_gamelogs(team_abv=None, season_yr=None, season_type=None):
     """
     from nba_api.stats.endpoints import teamgamelogs
 
-    team_list = pd.read_csv("data/team_id_list.csv")
-    team_dict = dict(zip(team_list['TEAM_ABBREVIATION'], team_list['TEAM_ID']))
-    team_id = team_dict[team_abv]
+    teams_dict = utils.get_teams_dict()
+    team_id = teams_dict[team_abv]
 
     if season_yr is None:
         season_yr = utils.curr_season_yr()
@@ -74,8 +73,8 @@ def get_team_gamelogs(team_abv=None, season_yr=None, season_type=None):
         team_id_nullable=str(team_id), season_nullable=season_suffix, season_type_nullable=season_type,
     )
     content = json.loads(response.get_json())
-    team_data = NBAData(content, 'team_gamelogs', season_yr, season_type, set_name=team_abv)
-    return team_data
+    team_gamelogs = GamelogData(content, 'team_gamelogs', season_yr, season_type, set_name=team_abv)
+    return team_gamelogs
 
 
 def get_season_gamelogs(season_yr=None, season_type=None):
@@ -89,47 +88,41 @@ def get_season_gamelogs(season_yr=None, season_type=None):
     if season_yr is None:
         season_yr = utils.curr_season_yr()
 
-    team_data_list = list()
+    team_gamelogs_list = list()
     for i, row in team_list.iterrows():
         team_abv = row["TEAM_ABBREVIATION"]
-        team_data = get_team_gamelogs(team_abv=team_abv, season_yr=season_yr, season_type=season_type)
-        team_data_list.append(team_data)
-        if len(team_data.result_sets[0]['rowSet']) > 0:
+        team_gamelogs = get_team_gamelogs(team_abv=team_abv, season_yr=season_yr, season_type=season_type)
+        if len(team_gamelogs.result_sets[0]['rowSet']) > 0:
             logger.info(f"Fetched {season_type} data for {team_abv} in {season_yr}.")
+            team_gamelogs.to_csv()
+            team_gamelogs_list.append(team_gamelogs)
         else:
             logger.warning(f"Warning: no {season_type} data found for {team_abv} in {season_yr}.")
         time.sleep(5)
 
-    return team_data_list
+    return team_gamelogs_list
 
 
-def load_team_gamelogs(st_year=None, end_year=None, season_types=None):
+def load_team_gamelogs(team_abv=None, season_yr=None, season_type=None):
     """
-    Load game log (box score) data
-    :param st_year: Year to load data from (e.g. 20 for 2020-21 season)
-    :param end_year: Year to load data to (e.g. 21 for 2021-22 season)
-    :param season_types: Season types (see def_season_types)
+    Load game log (box score) data for a team
+    :param team_abv: Team abbreviation
+    :param season_yr: Year to load data in (e.g. 2020 for 2020-21 season)
+    :param season_type: Season types (see def_season_types)
     :return:
     """
-    if season_types is None:
-        season_types = ["Regular Season", "Playoffs"]
+    season_suffix = utils.year_to_season_suffix(season_yr)
+    if team_abv == 'NBA':
+        team_abv_list = utils.get_teams_dict().keys()
+    else:
+        team_abv_list = [team_abv]
 
-    if st_year is None:
-        st_year = utils.def_start_year
-    if end_year is None:
-        end_year = utils.curr_season_yr() + 1
+    gl_df_list = list()
+    for team_abv in team_abv_list:
+        fname = utils.get_fname('team_gamelogs', season_suffix, season_type, set_name=team_abv)
+        fpath = dl_dir/fname
+        tm_gl_df = pd.read_csv(fpath)
+        gl_df_list.append(tm_gl_df)
+    gl_df = pd.concat(gl_df_list)
 
-    gldf_list = list()
-    for yr in range(st_year, end_year+1):
-        for season_type in season_types:
-            season_suffix = utils.year_to_season_suffix(yr)
-            fname = utils.get_fname('team_gamelogs', season_suffix, season_type)
-            fpath = os.path.join("dl_data", fname)
-            if os.path.exists(fpath):
-                t_df = pd.read_csv(fpath, dtype={"GAME_ID": "str"})
-                gldf_list.append(t_df)
-            else:
-                logger.warning(f"File not found at {fpath}")
-    gldf = pd.concat(gldf_list)
-    gldf = gldf.assign(gamedate_dt=pd.to_datetime(gldf["GAME_DATE"]))
-    return gldf
+    return gl_df

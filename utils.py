@@ -55,3 +55,9 @@ def year_to_season_suffix(season_yr):
     :return: Season suffix as string
     """
     return f"{season_yr}-{str(season_yr + 1)[-2:]}"
+
+
+def get_teams_dict():
+    teams_list = pd.read_csv("data/team_id_list.csv")
+    teams_dict = dict(zip(teams_list['TEAM_ABBREVIATION'], teams_list['TEAM_ID']))
+    return teams_dict
