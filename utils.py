@@ -12,7 +12,7 @@ file_prefixes = {"pl_list": "common_all_players", "gamelogs": "gamelogs",
 dl_dirpath = "dl_data"
 dl_dir = Path(dl_dirpath)
 rawdata_dir = dl_dir/'raw_gamedata'
-max_req_per_min = 30
+max_req_per_min = 10
 
 def_start_year = 2015  # Default start year for multi-year based functions
 

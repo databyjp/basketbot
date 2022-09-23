@@ -1,6 +1,7 @@
 # Project specific
 dl_data
 temp*.py
+temp
 
 # Mac files
 .DS_Store
