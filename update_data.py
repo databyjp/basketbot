@@ -23,10 +23,15 @@ pd.set_option('display.width', desired_width)
 dl_dir = utils.dl_dir
 rawdata_dir = utils.rawdata_dir
 
+
 def main():
     dl_dir.mkdir(exist_ok=True, parents=True)
     rawdata_dir.mkdir(exist_ok=True, parents=True)
-    data.fetch_season_gamelogs(season_yr=2020, season_type='Regular Season')
+    for season_yr in [2021, 2020]:
+        season_gamelogs = data.fetch_season_gamelogs(season_yr=season_yr, season_type='Regular Season', use_local=True)
+        print(len(season_gamelogs))
+        season_pbps = data.fetch_season_pbps(season_yr=season_yr, season_type='Regular Season')
+        print(len(season_pbps))
     return True
 
 

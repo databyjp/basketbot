@@ -9,8 +9,6 @@ import time
 
 logger = logging.getLogger(__name__)
 
-dl_dir = utils.dl_dir
-
 
 class GamelogData:
     """
@@ -50,7 +48,7 @@ class GamelogData:
 
     def to_csv(self):
         data_df = self.to_df()
-        out_path = os.path.join(dl_dir, self.fname)
+        out_path = os.path.join(utils.dl_dir, self.fname)
         data_df.to_csv(out_path, index=False)
         return True
 
@@ -58,12 +56,13 @@ class GamelogData:
         return f'{self.data_type} data for {self.set_name} in {self.season_suffix} season'
 
 
-def fetch_team_gamelogs(team_abv=None, season_yr=None, season_type=None):
+def fetch_team_gamelogs(team_abv=None, season_yr=None, season_type=None, use_local=False):
     """
     Downloads game logs for a team for a given season
     :param team_abv: Team Abbreviation
     :param season_yr: Starting year of the season to get (e.g. 2022 for '22-'23)
     :param season_type: Season type (^(Regular Season)|(Pre Season)|(Playoffs)|(All-Star)|(All Star)$)
+    :param use_local: Use local file if available (set False if getting data for season in progress)
     :return:
     """
     from nba_api.stats.endpoints import teamgamelogs
@@ -75,21 +74,30 @@ def fetch_team_gamelogs(team_abv=None, season_yr=None, season_type=None):
         season_yr = utils.curr_season_yr()
     season_suffix = utils.year_to_season_suffix(season_yr)
 
-    response = teamgamelogs.TeamGameLogs(
-        team_id_nullable=str(team_id), season_nullable=season_suffix, season_type_nullable=season_type,
-    )
-    content = json.loads(response.get_json())
-    team_gamelogs = GamelogData(content, season_yr, season_type, set_name=team_abv)
-    team_gamelogs.to_csv()
+    fname = utils.get_fname('gamelogs', season_suffix, season_type, set_name=team_abv)
+
+    if use_local and (utils.dl_dir/fname).exists():
+        return pd.read_csv(utils.dl_dir/fname)
+
+    else:
+        response = teamgamelogs.TeamGameLogs(
+            team_id_nullable=str(team_id), season_nullable=season_suffix, season_type_nullable=season_type,
+        )
+        content = json.loads(response.get_json())
+        team_gamelogs = GamelogData(content, season_yr, season_type, set_name=team_abv)
+        team_gamelogs.to_csv()
+        time.sleep(60/utils.max_req_per_min)  # Only sleep if API call made
+
     return team_gamelogs
 
 
-def fetch_season_gamelogs(season_yr=None, season_type=None):
+def fetch_season_gamelogs(season_yr=None, season_type=None, use_local=False):
     """
     Downloads & save team game logs for a given season
     This will always overwrite data.  # TODO - only overwrite data for the current and the immediately prev. season;
     :param season_yr: Starting year of the season to get (e.g. 2022 for '22-'23)
     :param season_type: Season type (^(Regular Season)|(Pre Season)|(Playoffs)|(All-Star)|(All Star)$)
+    :param use_local: Use local file if available (set False if getting data for season in progress)
     :return:
     """
     team_list = pd.read_csv("data/team_id_list.csv")
@@ -99,13 +107,12 @@ def fetch_season_gamelogs(season_yr=None, season_type=None):
     team_gamelogs_list = list()
     for i, row in team_list.iterrows():
         team_abv = row["TEAM_ABBREVIATION"]
-        team_gamelogs = fetch_team_gamelogs(team_abv=team_abv, season_yr=season_yr, season_type=season_type)
-        if len(team_gamelogs.result_sets[0]['rowSet']) > 0:
+        team_gamelogs = fetch_team_gamelogs(team_abv=team_abv, season_yr=season_yr, season_type=season_type, use_local=use_local)
+        if len(team_gamelogs) > 0:
             logger.info(f"Fetched {season_type} data for {team_abv} in {season_yr}.")
             team_gamelogs_list.append(team_gamelogs)
         else:
             logger.warning(f"Warning: no {season_type} data found for {team_abv} in {season_yr}.")
-        time.sleep(5)
 
     return team_gamelogs_list
 
@@ -127,7 +134,7 @@ def load_team_gamelogs(team_abv=None, season_yr=None, season_type='Regular Seaso
     gl_df_list = list()
     for team_abv in team_abv_list:
         fname = utils.get_fname('gamelogs', season_suffix, season_type, set_name=team_abv)
-        fpath = dl_dir/fname
+        fpath = utils.dl_dir/fname
         tm_gl_df = pd.read_csv(fpath)
         gl_df_list.append(tm_gl_df)
     gl_df = pd.concat(gl_df_list)
@@ -161,6 +168,7 @@ def fetch_gamedata(gm_id, datatype="pbp", gamedata_dir=None):
     """
     from nba_api.stats.endpoints import boxscoreadvancedv2
     from nba_api.live.nba.endpoints import playbyplay
+    import time
 
     if datatype not in ['boxscore', 'pbp']:
         logger.warning(f'Supplied datatype ({datatype}) not recognised; defaulting to box score.')
@@ -169,7 +177,7 @@ def fetch_gamedata(gm_id, datatype="pbp", gamedata_dir=None):
     gamedata_path = get_gamedata_path(gm_id, datatype, gamedata_dir)
 
     if gamedata_path.exists():
-        logger.info(f"JSON found for game {gm_id}, loading file download.")
+        logger.info(f"JSON found for game {gm_id}, reading local file.")
         with open(gamedata_path, 'r') as f:
             content = json.load(f)
     else:
@@ -186,7 +194,8 @@ def fetch_gamedata(gm_id, datatype="pbp", gamedata_dir=None):
             logger.info(f"Got {datatype} data for game {gm_id}")
         except:
             logger.exception(f"Error getting {datatype} data for game {gm_id}")
-            return False
+            content = None
+        time.sleep(60/utils.max_req_per_min)  # Only sleep if API call made
 
     return content
 
@@ -210,8 +219,20 @@ def load_pbp_data(gm_id_list, gamedata_dir=None):
     pbp_df_list = list()
     for gm_id in gm_id_list:
         content = fetch_gamedata(gm_id, datatype='pbp', gamedata_dir=gamedata_dir)
-        gm_pbp_df = pbp_content_to_df(content)
-        pbp_df_list.append(gm_pbp_df)
+        if content is not None:
+            gm_pbp_df = pbp_content_to_df(content)
+            pbp_df_list.append(gm_pbp_df)
     pbp_df = pd.concat(pbp_df_list)
 
+    return pbp_df
+
+
+def fetch_season_pbps(season_yr=None, season_type='Regular Season'):
+    if season_yr is None:
+        season_yr = utils.curr_season_yr()
+
+    gl_df = load_team_gamelogs(team_abv='NBA', season_yr=season_yr, season_type=season_type)
+    pbp_df = load_pbp_data(gl_df['GAME_ID'])
+    pbp_path = utils.dl_dir/f'pbp_{season_yr}.csv'
+    pbp_df.to_csv(pbp_path, index=False)
     return pbp_df
