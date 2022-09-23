@@ -1,10 +1,16 @@
 # BasketBot
 
-An easy-to-use wrapper for [nba_api](https://github.com/swar/nba_api). I adapted my code as people often ask where they can get up-to-date basketball data.
+An easy-to-use wrapper for [nba_api](https://github.com/swar/nba_api) to speed up downloading NBA data. 
 
-For now, it only supports getting the play-by-play data (including some event locations) and team box score data.
+## What is it?
+People sometimes ask where they can get up-to-date basketball data, so I thought I would clean some of my code & share it. 
 
-To try it out:
+The idea is to build an **easy-to-use** library which people can use to download high-quality, up-to-date data with just a line or two of code.
+
+For now, it only supports getting the play-by-play data (including some event locations) and team box score data. 
+
+## How do I use it?
+For now it's pretty basic. To try it out:
 - Clone the repo
 - Set up a virtual environment using `requirements.txt`
 - Activate the virtual environment
