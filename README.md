@@ -14,4 +14,7 @@ For now it's pretty basic. To try it out:
 - Clone the repo
 - Set up a virtual environment using `requirements.txt`
 - Activate the virtual environment
-- Run `python download_pbp_data.py 2020 2021` to download the 2020-21 and 2021-22 play-by-play and team box score data.
+- Run scripts using syntax `python [script_name] [start_year] [end_year|OPTIONAL]`
+  - Run `python download_pbp_data.py 2020 2021` to download the 2020-21 and 2021-22 play-by-play and team box score data.
+  - Run `python download_pbp_data.py 2020` to download the 2020-21 play-by-play and team box score data.
+  - Run `python download_boxscores.py 2021` to download the 2021-22 player box score data.
